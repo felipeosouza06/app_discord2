@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws: wss:; media-src 'self' blob: mediastream:">
+  <title>Discórdia</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Tela de entrada -->
+  <main id="login">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <form id="login-form" class="card">
+      <div class="brand">
+        <img src="logo.svg" alt="" class="logo">
+        <div>
+          <h1>Discórdia</h1>
+          <p class="subtitle">Voz, chat e tela compartilhada com a galera.</p>
+        </div>
+      </div>
+      <label>Seu nome
+        <input id="in-name" maxlength="32" spellcheck="false" required autofocus placeholder="Como a galera te chama?">
+      </label>
+      <label>Sala
+        <input id="in-room" maxlength="32" spellcheck="false" required placeholder="ex.: geral">
+      </label>
+      <details>
+        <summary>Configurações do servidor</summary>
+        <label>Endereço
+          <input id="in-server" required placeholder="ws://localhost:3000">
+        </label>
+        <label>Senha do servidor (se tiver)
+          <input id="in-password" type="password">
+        </label>
+      </details>
+      <button type="submit" class="primary big">Entrar na sala</button>
+      <button type="button" id="btn-settings-login" class="link">Configurar microfone e áudio</button>
+      <p id="login-status" role="status"></p>
+    </form>
+  </main>
+
+  <!-- App -->
+  <div id="app" hidden>
+    <aside id="sidebar" class="panel">
+      <header class="sidebar-head">
+        <img src="logo.svg" alt="" class="logo small">
+        <div class="room-info">
+          <span class="eyebrow">Sala</span>
+          <span id="room-title"></span>
+        </div>
+      </header>
+      <div class="section-label">Na sala — <span id="member-count">1</span></div>
+      <ul id="user-list"></ul>
+      <div id="me-panel">
+        <div class="me-info">
+          <span id="me-avatar" class="avatar"></span>
+          <div class="me-text">
+            <span id="me-name"></span>
+            <span id="me-status"></span>
+          </div>
+          <button id="btn-settings" class="icon ghost" title="Configurações de voz"></button>
+        </div>
+        <div id="controls">
+          <button id="btn-mic" class="icon"></button>
+          <button id="btn-deafen" class="icon"></button>
+          <button id="btn-share" class="icon"></button>
+          <button id="btn-leave" class="icon danger"></button>
+        </div>
+      </div>
+    </aside>
+
+    <section id="stage" class="panel">
+      <div id="screens"></div>
+      <div id="stage-empty">
+        <div class="empty-art">
+          <svg viewBox="0 0 120 90" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="10" y="8" width="100" height="62" rx="8" stroke="currentColor" stroke-width="3"/>
+            <path d="M44 82h32M60 70v12" stroke="currentColor" stroke-width="3"/>
+            <path d="M52 28l18 11-18 11z" fill="url(#play)" stroke="none"/>
+            <defs>
+              <linearGradient id="play" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#ec4899"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h2>Ninguém está transmitindo</h2>
+        <p>Compartilhe sua tela pra galera assistir junto.</p>
+        <button id="btn-share-big" class="primary big">Compartilhar minha tela</button>
+      </div>
+    </section>
+
+    <section id="chat" class="panel">
+      <header class="chat-head">Chat</header>
+      <ol id="messages"></ol>
+      <form id="chat-form">
+        <input id="chat-input" maxlength="2000" placeholder="Mandar mensagem…" autocomplete="off">
+        <button type="submit" id="chat-send" class="icon" title="Enviar"></button>
+      </form>
+    </section>
+  </div>
+
+  <!-- Seletor de tela -->
+  <div id="picker" class="modal" hidden>
+    <div class="card wide">
+      <div class="modal-head">
+        <h2>O que você quer compartilhar?</h2>
+        <div id="picker-tabs" class="segmented">
+          <button data-tab="screen" class="tab active">Telas</button>
+          <button data-tab="window" class="tab">Janelas</button>
+        </div>
+      </div>
+      <div id="picker-grid"></div>
+      <div class="modal-foot">
+        <div id="picker-options">
+          <label>Qualidade
+            <select id="picker-quality">
+              <option value="720p30">720p · 30 fps</option>
+              <option value="1080p30" selected>1080p · 30 fps</option>
+              <option value="1080p60">1080p · 60 fps (jogos)</option>
+            </select>
+          </label>
+          <label id="picker-audio-label" class="check" hidden>
+            <input type="checkbox" id="picker-audio"> Compartilhar áudio do PC
+          </label>
+        </div>
+        <div class="actions">
+          <button id="picker-cancel" class="ghost">Cancelar</button>
+          <button id="picker-go" class="primary" disabled>Transmitir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Volume de um amigo -->
+  <div id="user-menu" class="popover" hidden>
+    <div class="popover-head">
+      <span id="um-avatar" class="avatar"></span>
+      <strong id="um-name"></strong>
+    </div>
+    <div class="popover-field">
+      <div class="label-row"><span>Volume</span><span id="um-volume-val" class="val"></span></div>
+      <input type="range" id="um-volume" min="0" max="2" step="0.05">
+      <div class="range-scale"><span>0%</span><span>100%</span><span>200%</span></div>
+    </div>
+    <label class="switch-row">
+      <span><strong>Silenciar pra mim</strong></span>
+      <input type="checkbox" id="um-mute" class="switch">
+    </label>
+    <button id="um-reset" class="ghost">Voltar ao normal</button>
+  </div>
+
+  <!-- Configurações de voz -->
+  <div id="settings" class="modal" hidden>
+    <div class="card wide settings-card">
+      <div class="modal-head">
+        <h2>Configurações de voz</h2>
+        <button id="settings-close" class="icon ghost" title="Fechar (Esc)"></button>
+      </div>
+
+      <p id="settings-error" class="settings-error" hidden></p>
+
+      <div class="settings-body">
+        <section class="settings-section">
+          <div class="settings-grid">
+            <label>Microfone
+              <select id="set-input"></select>
+            </label>
+            <label>Saída de áudio
+              <select id="set-output"></select>
+            </label>
+            <label>
+              <span class="label-row">Volume do microfone <span id="set-input-volume-val" class="val"></span></span>
+              <input type="range" id="set-input-volume" min="0" max="2" step="0.05">
+            </label>
+            <label>
+              <span class="label-row">Volume dos amigos <span id="set-output-volume-val" class="val"></span></span>
+              <input type="range" id="set-output-volume" min="0" max="1" step="0.05">
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3>Teste de microfone</h3>
+          <p class="hint">Fale alguma coisa e acompanhe o medidor. Em "Me ouvir" você escuta exatamente o que chega pros seus amigos. Use fone, senão dá microfonia.</p>
+          <div class="test-row">
+            <div id="meter" class="meter">
+              <div id="meter-fill"></div>
+              <input type="range" id="set-gate-threshold" min="-80" max="-10" step="1" title="Arraste para ajustar a sensibilidade">
+            </div>
+            <button id="set-test" class="test-btn">Me ouvir</button>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <label class="switch-row">
+            <span>
+              <strong>Cortar o som quando eu não estiver falando</strong>
+              <span class="hint">Arraste o marcador no medidor: o que ficar abaixo dele não é transmitido. Bom pra esconder teclado, ventilador e respiração.</span>
+            </span>
+            <input type="checkbox" id="set-gate" class="switch">
+          </label>
+        </section>
+
+        <section class="settings-section">
+          <h3>Supressão de ruído</h3>
+          <div id="set-noise" class="segmented choice">
+            <button data-value="off" class="tab">Desligada</button>
+            <button data-value="standard" class="tab">Padrão</button>
+            <button data-value="ai" class="tab">Forte (IA)</button>
+          </div>
+          <p id="set-noise-hint" class="hint"></p>
+        </section>
+
+        <section class="settings-section">
+          <label class="switch-row">
+            <span>
+              <strong>Cancelamento de eco</strong>
+              <span class="hint">Evita que seus amigos se escutem de volta quando você usa caixa de som em vez de fone.</span>
+            </span>
+            <input type="checkbox" id="set-echo" class="switch">
+          </label>
+          <label class="switch-row">
+            <span>
+              <strong>Ganho automático</strong>
+              <span class="hint">Ajusta sozinho o volume da sua voz, deixando tudo num nível parecido.</span>
+            </span>
+            <input type="checkbox" id="set-agc" class="switch">
+          </label>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" hidden></div>
+
+  <script src="config.js"></script>
+  <script src="voice.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

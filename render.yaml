@@ -1,0 +1,20 @@
+# Deploy do servidor do Discórdia no Render (plano grátis).
+# Os valores marcados com "sync: false" são pedidos na hora de criar o serviço.
+services:
+  - type: web
+    name: discordia-server
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: PASSWORD
+        sync: false
+      - key: TURN_URLS
+        sync: false
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_PASSWORD
+        sync: false

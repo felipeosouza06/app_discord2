@@ -1,0 +1,52 @@
+{
+  "name": "discordia",
+  "productName": "Discordia",
+  "version": "1.0.0",
+  "description": "Chat de voz e compartilhamento de tela entre amigos",
+  "author": "Felipe",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "dist:mac": "electron-builder --mac",
+    "vendor": "mkdir -p renderer/vendor/noise/rnnoise && cd node_modules/@sapphi-red/web-noise-suppressor/dist && cp index.js rnnoise.wasm rnnoise_simd.wasm ../../../../renderer/vendor/noise/ && cp rnnoise/workletProcessor.js ../../../../renderer/vendor/noise/rnnoise/"
+  },
+  "build": {
+    "appId": "com.felipe.discordia",
+    "productName": "Discordia",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "signAndEditExecutable": true
+    },
+    "nsis": {
+      "oneClick": true
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Network"
+    },
+    "mac": {
+      "target": "dmg",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "O Discórdia usa o microfone para o chat de voz."
+      }
+    }
+  },
+  "devDependencies": {
+    "electron": "^37.10.3",
+    "electron-builder": "^25.1.8",
+    "@sapphi-red/web-noise-suppressor": "^0.4.1"
+  }
+}
