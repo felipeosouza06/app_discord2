@@ -78,6 +78,8 @@ let reconnecting = false;
 let currentRoom = '';
 let roomList = [];
 let retryTimer = null;
+// Tentando entrar (o botão vira "Cancelar").
+let connecting = false;
 
 // watching: ids dos amigos cuja transmissão estou vendo agora.
 const me = { muted: false, deafened: false, sharing: false, watching: [] };
@@ -177,11 +179,14 @@ async function onLogin(event) {
   const room = $('#in-room').value.trim();
   const server = $('#in-server').value.trim();
   const password = $('#in-password').value;
+  if (connecting) {
+    cancelLogin();
+    return;
+  }
   if (!name || !room || !server) return;
   storageSet('login', { name, room, server, password });
 
-  const button = $('#login-form button[type="submit"]');
-  button.disabled = true;
+  setLoginBusy(true);
   $('#login-status').textContent = '';
 
   try {
@@ -190,6 +195,7 @@ async function onLogin(event) {
     console.warn('Microfone indisponível', err);
     micStream = null;
   }
+  if (!connecting) return; // cancelou enquanto o microfone abria
 
   myName = name;
   loginError = '';
@@ -197,14 +203,38 @@ async function onLogin(event) {
   connectServer(Date.now() + WAKE_TIMEOUT_MS);
 }
 
-function connectServer(deadline) {
+function setLoginBusy(busy) {
+  connecting = busy;
   const button = $('#login-form button[type="submit"]');
+  button.disabled = false;
+  button.textContent = busy ? 'Cancelar' : 'Entrar na sala';
+  button.classList.toggle('cancel', busy);
+}
+
+// Desiste de entrar: permite corrigir endereço/senha sem fechar o app.
+function cancelLogin() {
+  clearTimeout(retryTimer);
+  retryTimer = null;
+  if (ws) {
+    ws.onclose = null;
+    ws.close();
+    ws = null;
+  }
+  session = null;
+  stopMic();
+  const status = $('#login-status');
+  status.classList.remove('waiting');
+  status.textContent = '';
+  setLoginBusy(false);
+}
+
+function connectServer(deadline) {
   const status = $('#login-status');
   let opened = false;
   try {
     ws = new WebSocket(session.server);
   } catch {
-    button.disabled = false;
+    setLoginBusy(false);
     status.textContent = 'Endereço do servidor inválido.';
     stopMic();
     return;
@@ -243,8 +273,8 @@ function connectServer(deadline) {
       return;
     }
     status.classList.remove('waiting');
-    button.disabled = false;
-    status.textContent = loginError || 'Não foi possível conectar ao servidor.';
+    setLoginBusy(false);
+    status.textContent = loginError || 'Não foi possível conectar ao servidor. Confira o endereço.';
     stopMic();
   };
 }
@@ -311,7 +341,7 @@ function leave(reason) {
   $('#screens').replaceChildren();
   $('#app').hidden = true;
   $('#login').hidden = false;
-  $('#login-form button[type="submit"]').disabled = false;
+  setLoginBusy(false);
   $('#login-status').textContent = reason || '';
 }
 
@@ -329,6 +359,7 @@ function onServerMessage(msg) {
     case 'welcome': {
       const wasReconnecting = reconnecting;
       const firstJoin = !currentRoom;
+      setLoginBusy(false);
       reconnecting = false;
       myId = msg.id;
       currentRoom = msg.room;
@@ -1067,8 +1098,8 @@ function renderRooms() {
 function switchRoom(name) {
   const room = normalizeRoom(name);
   if (!room || !session || !myId || room === currentRoom) return;
-  // Desfaz as conexões da sala atual; o 'welcome' da nova sala recria tudo.
-  for (const id of [...peers.keys()]) removePeer(id);
+  // As conexões da sala atual só são desfeitas quando a nova sala responder
+  // ('welcome'), assim ninguém fica sem áudio se a troca não acontecer.
   session.joinMsg = { ...session.joinMsg, room };
   storageSet('login', { ...storageGet('login'), room });
   send(session.joinMsg);
@@ -1123,7 +1154,17 @@ const KEY_NAMES = {
   ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
   Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'",
   Backquote: '`', Backslash: '\\', Comma: ',', Period: '.', Slash: '/',
+  NumpadAdd: 'numadd', NumpadSubtract: 'numsub', NumpadMultiply: 'nummult', NumpadDivide: 'numdiv',
+  NumpadDecimal: 'numdec', ScrollLock: 'Scrolllock', PrintScreen: 'PrintScreen',
+  MediaPlayPause: 'MediaPlayPause', MediaTrackNext: 'MediaNextTrack', MediaTrackPrevious: 'MediaPreviousTrack',
+  MediaStop: 'MediaStop', AudioVolumeMute: 'VolumeMute',
 };
+
+// Teclas de digitar usadas sozinhas: o atalho global "rouba" a tecla de todos
+// os programas enquanto o Discórdia estiver aberto (inclusive do jogo).
+function isTypingKey(accelerator) {
+  return /^([A-Z0-9]|Space|Enter|Tab|Backspace|Delete|[-=\[\];'`\\,./])$/.test(accelerator);
+}
 
 // Converte um evento de teclado no formato de atalho do Electron.
 function acceleratorFrom(event) {
@@ -1140,16 +1181,23 @@ function acceleratorFrom(event) {
   if (event.altKey) mods.push('Alt');
   if (event.shiftKey) mods.push('Shift');
   if (event.metaKey) mods.push('Super');
-  // Sem modificador, só teclas F: senão o atalho "rouba" uma tecla comum do jogo.
-  if (mods.length === 0 && !/^F\d+$/.test(key)) return null;
   return [...mods, key].join('+');
 }
 
+const KEY_LABELS = {
+  numadd: 'Num +', numsub: 'Num -', nummult: 'Num *', numdiv: 'Num /', numdec: 'Num ,',
+  Scrolllock: 'Scroll Lock', PrintScreen: 'Print Screen', MediaPlayPause: 'Play/Pause',
+  MediaNextTrack: 'Próxima faixa', MediaPreviousTrack: 'Faixa anterior', MediaStop: 'Parar mídia',
+  VolumeMute: 'Mudo (teclado)', Space: 'Espaço',
+};
+
 function shortcutLabel(accelerator) {
-  return accelerator
-    .replace('CommandOrControl', window.api.platform === 'darwin' ? 'Cmd' : 'Ctrl')
-    .replace('Super', window.api.platform === 'darwin' ? 'Cmd' : 'Win')
-    .split('+').join(' + ');
+  return accelerator.split('+').map((part) => {
+    if (part === 'CommandOrControl') return window.api.platform === 'darwin' ? 'Cmd' : 'Ctrl';
+    if (part === 'Super') return window.api.platform === 'darwin' ? 'Cmd' : 'Win';
+    if (/^num\d$/.test(part)) return `Num ${part.slice(3)}`;
+    return KEY_LABELS[part] || part;
+  }).join(' + ');
 }
 
 async function applyShortcuts() {
@@ -1160,7 +1208,11 @@ async function applyShortcuts() {
   });
   const error = $('#shortcut-error');
   error.hidden = failed.length === 0;
-  error.textContent = 'Esse atalho já está sendo usado por outro programa. Escolha outra combinação.';
+  error.textContent = 'Esse atalho já está sendo usado por outro programa. Escolha outra tecla.';
+  const typing = Object.values(shortcuts).filter((a) => a && isTypingKey(a));
+  const warning = $('#shortcut-warning');
+  warning.hidden = typing.length === 0;
+  warning.textContent = `Atenção: enquanto o Discórdia estiver aberto, ${typing.map(shortcutLabel).join(' e ')} não vai funcionar em outros programas, nem no jogo. Para não perder uma tecla, prefira F1–F12, as do teclado numérico ou uma combinação com Ctrl/Alt/Shift.`;
 }
 
 function renderShortcuts() {
