@@ -6,6 +6,7 @@
   "author": "Felipe",
   "main": "main.js",
   "scripts": {
+    "postinstall": "install-electron",
     "start": "electron .",
     "dist:win": "electron-builder --win",
     "dist:linux": "electron-builder --linux",
@@ -45,8 +46,8 @@
     }
   },
   "devDependencies": {
-    "electron": "^37.10.3",
-    "electron-builder": "^25.1.8",
-    "@sapphi-red/web-noise-suppressor": "^0.4.1"
+    "@sapphi-red/web-noise-suppressor": "^0.4.1",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
   }
 }
