@@ -18,6 +18,8 @@ const RETRY_DELAY_MS = 3000;
 // Mensagem periódica que conta como uso e impede o servidor de dormir
 // enquanto tem gente na sala (o Render dorme após 15 min sem tráfego).
 const KEEPALIVE_MS = 4 * 60 * 1000;
+// Se a conexão com o servidor cair no meio da sala, tenta voltar por até 2 min.
+const RECONNECT_TIMEOUT_MS = 2 * 60 * 1000;
 
 const QUALITY = {
   '720p30': { width: 1280, height: 720, frameRate: 30, bitrate: 2_500_000 },
@@ -67,6 +69,10 @@ let screenStream = null;
 let screenQuality = QUALITY['1080p30'];
 let mutedBeforeDeafen = false;
 let loginError = '';
+// Servidor e mensagem de entrada da sessão atual, usados para reconectar.
+let session = null;
+let reconnecting = false;
+let retryTimer = null;
 
 const me = { muted: false, deafened: false, sharing: false };
 
@@ -179,15 +185,16 @@ async function onLogin(event) {
 
   myName = name;
   loginError = '';
-  connectServer(server, { type: 'join', name, room, password }, Date.now() + WAKE_TIMEOUT_MS);
+  session = { server, joinMsg: { type: 'join', name, room, password } };
+  connectServer(Date.now() + WAKE_TIMEOUT_MS);
 }
 
-function connectServer(server, joinMsg, deadline) {
+function connectServer(deadline) {
   const button = $('#login-form button[type="submit"]');
   const status = $('#login-status');
   let opened = false;
   try {
-    ws = new WebSocket(server);
+    ws = new WebSocket(session.server);
   } catch {
     button.disabled = false;
     status.textContent = 'Endereço do servidor inválido.';
@@ -196,8 +203,8 @@ function connectServer(server, joinMsg, deadline) {
   }
   ws.onopen = () => {
     opened = true;
-    status.textContent = '';
-    send(joinMsg);
+    if (!reconnecting) status.textContent = '';
+    send(session.joinMsg);
   };
   ws.onmessage = (ev) => {
     let msg;
@@ -206,14 +213,22 @@ function connectServer(server, joinMsg, deadline) {
   };
   ws.onclose = () => {
     if (myId) {
-      leave('A conexão com o servidor caiu.');
+      startReconnect();
+      return;
+    }
+    if (reconnecting) {
+      if (!loginError && Date.now() < deadline) {
+        retryTimer = setTimeout(() => connectServer(deadline), RETRY_DELAY_MS);
+      } else {
+        leave(loginError || 'A conexão com o servidor caiu e não foi possível reconectar.');
+      }
       return;
     }
     // Servidor dormindo: continua tentando até ele acordar.
     if (!opened && !loginError && Date.now() < deadline) {
       status.classList.add('waiting');
       status.textContent = 'Acordando o servidor… isso pode levar até 1 minuto.';
-      setTimeout(() => connectServer(server, joinMsg, deadline), RETRY_DELAY_MS);
+      retryTimer = setTimeout(() => connectServer(deadline), RETRY_DELAY_MS);
       return;
     }
     status.classList.remove('waiting');
@@ -227,12 +242,44 @@ setInterval(() => {
   if (myId) send({ type: 'ping' });
 }, KEEPALIVE_MS);
 
+// A conexão com o servidor caiu no meio da sala. Mantém microfone e
+// transmissão, desfaz as conexões com os amigos e entra de novo na sala;
+// os amigos reconectam com a gente como se tivéssemos acabado de entrar.
+function startReconnect() {
+  ws = null;
+  myId = null;
+  reconnecting = true;
+  for (const id of [...peers.keys()]) removePeer(id);
+  setReconnectBanner(true);
+  connectServer(Date.now() + RECONNECT_TIMEOUT_MS);
+}
+
+function setReconnectBanner(visible) {
+  $('#reconnect-banner').hidden = !visible;
+  const input = $('#chat-input');
+  input.disabled = visible;
+  input.placeholder = visible ? 'Reconectando…' : 'Mandar mensagem…';
+}
+
+// Volta a internet: tenta na hora, sem esperar o próximo intervalo.
+window.addEventListener('online', () => {
+  if (!reconnecting || !retryTimer) return;
+  clearTimeout(retryTimer);
+  retryTimer = null;
+  connectServer(Date.now() + RECONNECT_TIMEOUT_MS);
+});
+
 function stopMic() {
   Voice.stop();
   micStream = null;
 }
 
 function leave(reason) {
+  clearTimeout(retryTimer);
+  retryTimer = null;
+  reconnecting = false;
+  session = null;
+  setReconnectBanner(false);
   if (ws) {
     ws.onclose = null;
     ws.close();
@@ -266,7 +313,9 @@ function onServerMessage(msg) {
       ws.close();
       break;
 
-    case 'welcome':
+    case 'welcome': {
+      const wasReconnecting = reconnecting;
+      reconnecting = false;
       myId = msg.id;
       $('#login-status').classList.remove('waiting');
       iceConfig = { iceServers: [...ICE_CONFIG.iceServers, ...(msg.iceServers || [])] };
@@ -274,15 +323,25 @@ function onServerMessage(msg) {
       $('#app').hidden = false;
       $('#room-title').textContent = msg.room;
       initMePanel();
+      unmonitor('local');
       if (micStream) monitor('local', micStream, myId);
-      else toast('Microfone não encontrado — você entrou só para ouvir.');
+      else if (!wasReconnecting) toast('Microfone não encontrado — você entrou só para ouvir.');
+      $('#messages').replaceChildren();
+      lastMessage = null;
       msg.history.forEach(addChatMessage);
       // Quem acabou de entrar espera as ofertas de quem já estava na sala.
       msg.peers.forEach((peer) => createPeer(peer, false));
       updateControls();
       renderUsers();
+      if (wasReconnecting) {
+        setReconnectBanner(false);
+        // O servidor nos trata como recém-chegados: reenvia mudo/transmissão.
+        sendState();
+        toast('Reconectado!');
+      }
       $('#chat-input').focus();
       break;
+    }
 
     case 'peer-joined':
       createPeer(msg.peer, true);
