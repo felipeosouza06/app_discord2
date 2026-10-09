@@ -1,7 +1,7 @@
 {
   "name": "discordia",
   "productName": "Discordia",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Chat de voz e compartilhamento de tela entre amigos",
   "author": "Felipe",
   "homepage": "https://github.com/felipeosouza06/app_discord2",
@@ -55,7 +55,8 @@
       {
         "provider": "github",
         "owner": "felipeosouza06",
-        "repo": "app_discord2"
+        "repo": "app_discord2",
+        "releaseType": "release"
       }
     ],
     "deb": {

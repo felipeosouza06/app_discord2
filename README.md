@@ -62,7 +62,7 @@ cd app
 GH_TOKEN=seu_token npm run release
 ```
 
-3. Abra a página de Releases. O electron-builder cria um rascunho com a versão nova; clique em **Publish release**.
+O Release é criado e publicado automaticamente, com os instaladores do Windows e do Linux.
 
 Depois disso, quem estiver com o app aberto recebe o aviso "Nova versão pronta" em até 4 horas, ou na próxima vez que abrir o app.
 
