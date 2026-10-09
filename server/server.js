@@ -3,7 +3,24 @@
 // vão direto de um participante para o outro.
 const http = require('http');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { WebSocketServer } = require('ws');
+
+// Versão web do app (para celular e navegador): a mesma interface do app
+// desktop, servida a partir de app/renderer.
+const WEB_DIR = path.resolve(process.env.WEB_DIR || path.join(__dirname, '..', 'app', 'renderer'));
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.woff2': 'font/woff2',
+  '.wasm': 'application/wasm',
+  '.webmanifest': 'application/manifest+json',
+  '.json': 'application/json',
+};
 
 const PORT = Number(process.env.PORT) || 3000;
 const PASSWORD = process.env.PASSWORD || '';
@@ -25,9 +42,38 @@ const ICE_SERVERS = TURN_URLS.length
   ? [{ urls: TURN_URLS, username: process.env.TURN_USERNAME || '', credential: process.env.TURN_PASSWORD || '' }]
   : [];
 
+function serveWeb(req, res) {
+  let pathname;
+  try {
+    pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  } catch {
+    pathname = '/';
+  }
+  if (pathname === '/') pathname = '/index.html';
+  const file = path.normalize(path.join(WEB_DIR, pathname));
+  const type = MIME_TYPES[path.extname(file)];
+  if (!file.startsWith(WEB_DIR + path.sep) || !type) {
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    return res.end('Não encontrado.\n');
+  }
+  fs.readFile(file, (err, data) => {
+    if (err) {
+      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+      return res.end('Não encontrado.\n');
+    }
+    // HTML/JS/CSS sempre revalidados, para quem abrir pegar a versão nova logo.
+    const cache = /\.(woff2|wasm|png)$/.test(file) ? 'public, max-age=86400' : 'no-cache';
+    res.writeHead(200, { 'content-type': type, 'cache-control': cache });
+    res.end(data);
+  });
+}
+
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
-  res.end('Servidor do Discórdia rodando.\n');
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405);
+    return res.end();
+  }
+  serveWeb(req, res);
 });
 
 const wss = new WebSocketServer({ server, maxPayload: MAX_MESSAGE_BYTES });

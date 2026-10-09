@@ -54,6 +54,8 @@ const ICONS = {
   image: svg('<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>'),
   smile: svg('<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/>'),
   eye: svg('<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>'),
+  people: svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
+  chat: svg('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   fullscreen: svg('<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>'),
 };
@@ -63,6 +65,8 @@ const ICONS = {
 // ---------------------------------------------------------------------------
 
 const $ = (sel) => document.querySelector(sel);
+// Versão web (navegador/celular) em vez do app desktop.
+const IS_WEB = window.api.platform === 'web';
 
 let ws = null;
 let myId = null;
@@ -437,7 +441,11 @@ function onServerMessage(msg) {
       addChatMessage(msg);
       if (msg.from !== myId) {
         bumpUnread();
-        if (document.hidden) new Notification(msg.name, { body: msg.text || '📷 Imagem', silent: false });
+        if (isMobileLayout() && $('#app').dataset.view !== 'chat') {
+          mobileUnread++;
+          updateMobileTabs();
+        }
+        if (document.hidden) notify(msg.name, msg.text || '📷 Imagem');
       }
       break;
   }
@@ -604,10 +612,21 @@ async function openPicker() {
     stopShare();
     return;
   }
+  if (IS_WEB && !window.canShareScreen) {
+    toast('Compartilhar a tela só funciona no computador.');
+    return;
+  }
   $('#picker').hidden = false;
+  $('#picker-audio-label').hidden = !IS_WEB && window.api.platform !== 'win32';
+  if (IS_WEB) {
+    // No navegador quem escolhe a tela/janela/aba é o seletor do próprio navegador.
+    $('#picker-tabs').hidden = true;
+    $('#picker-grid').textContent = 'Ao clicar em Transmitir, o navegador vai perguntar qual tela, janela ou aba compartilhar.';
+    $('#picker-go').disabled = false;
+    return;
+  }
   $('#picker-grid').textContent = 'Carregando…';
   $('#picker-go').disabled = true;
-  $('#picker-audio-label').hidden = window.api.platform !== 'win32';
   pickerSelected = null;
   try {
     pickerSources = await window.api.getSources();
@@ -656,9 +675,9 @@ function closePicker() {
 }
 
 async function confirmPicker() {
-  if (!pickerSelected) return;
+  if (!pickerSelected && !IS_WEB) return;
   const quality = $('#picker-quality').value;
-  const withAudio = window.api.platform === 'win32' && $('#picker-audio').checked;
+  const withAudio = (IS_WEB || window.api.platform === 'win32') && $('#picker-audio').checked;
   const sourceId = pickerSelected;
   closePicker();
   try {
@@ -671,7 +690,7 @@ async function confirmPicker() {
 
 async function startShare(sourceId, qualityKey, withAudio) {
   const q = QUALITY[qualityKey];
-  await window.api.selectSource(sourceId, withAudio);
+  if (!IS_WEB) await window.api.selectSource(sourceId, withAudio);
   const stream = await navigator.mediaDevices.getDisplayMedia({
     video: {
       width: { max: q.width },
@@ -802,7 +821,8 @@ function createTile(stream, label, isLocal) {
 
 function toggleFullscreen(tile) {
   if (document.fullscreenElement === tile) document.exitFullscreen();
-  else tile.requestFullscreen();
+  else if (tile.requestFullscreen) tile.requestFullscreen();
+  else tile.querySelector('video')?.webkitEnterFullscreen?.();
 }
 
 function updateFullscreenButton(tile) {
@@ -852,6 +872,7 @@ document.addEventListener('visibilitychange', () => {
 
 function updateStageEmpty() {
   updateWatching();
+  updateMobileTabs();
   // Remove blocos cujo <video> já foi retirado da página.
   document.querySelectorAll('.tile:not([data-local])').forEach((tile) => {
     if (!tile.querySelector('video')) tile.remove();
@@ -995,7 +1016,9 @@ function updateControls() {
   share.innerHTML = me.sharing ? ICONS.monitorOff : ICONS.monitor;
   share.classList.toggle('on', me.sharing);
   share.title = me.sharing ? 'Parar de compartilhar' : 'Compartilhar tela';
-  $('#btn-share-big').hidden = me.sharing;
+  $('#btn-share-big').hidden = me.sharing || (IS_WEB && !window.canShareScreen);
+
+  updateMobileTabs();
 
   const leaveBtn = $('#btn-leave');
   leaveBtn.innerHTML = ICONS.leave;
@@ -1019,6 +1042,49 @@ function updateControls() {
     status.textContent = 'Conectado na voz';
   }
 }
+
+// ---------------------------------------------------------------------------
+// Celular: abas Pessoas / Tela / Chat e botão de microfone sempre à mão
+// ---------------------------------------------------------------------------
+
+const mobileQuery = window.matchMedia('(max-width: 820px)');
+let mobileUnread = 0;
+
+function isMobileLayout() {
+  return mobileQuery.matches;
+}
+
+function setView(view) {
+  $('#app').dataset.view = view;
+  document.querySelectorAll('#mobile-tabs .mtab[data-view]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.view === view);
+  });
+  if (view === 'chat') {
+    mobileUnread = 0;
+    const list = $('#messages');
+    list.scrollTop = list.scrollHeight;
+  }
+  updateMobileTabs();
+}
+
+function updateMobileTabs() {
+  const badge = $('#mtab-unread');
+  badge.hidden = mobileUnread === 0;
+  badge.textContent = mobileUnread > 9 ? '9+' : String(mobileUnread);
+  // Ponto vermelho na aba Tela quando alguém está transmitindo.
+  $('#mtab-live').hidden = !document.querySelector('#screens .tile:not([data-local])');
+  const mic = $('#mtab-mic');
+  mic.querySelector('.mtab-icon').innerHTML = me.muted ? ICONS.micOff : ICONS.mic;
+  mic.classList.toggle('off', me.muted);
+  $('#mtab-mic-label').textContent = me.muted ? 'Mutado' : 'Microfone';
+}
+
+document.querySelectorAll('#mobile-tabs .mtab[data-view]').forEach((b) => {
+  b.querySelector('.mtab-icon').innerHTML = ICONS[b.querySelector('.mtab-icon').dataset.icon];
+  b.onclick = () => setView(b.dataset.view);
+});
+$('#mtab-mic').onclick = () => userToggleMute();
+setView('people');
 
 function initMePanel() {
   const avatar = avatarEl(myName);
@@ -1294,6 +1360,18 @@ $('#update-later').onclick = () => {
   $('#update-banner').hidden = true;
   toast('A atualização será instalada quando você fechar o app.');
 };
+// Versão web: esconde o que o navegador não consegue fazer.
+if (IS_WEB) {
+  $('#shortcuts-section').hidden = true;
+  $('#picker-audio-text').textContent = 'Compartilhar áudio (se o navegador permitir)';
+  if (!window.canShareScreen) {
+    $('#btn-share').hidden = true;
+    $('#btn-share-big').hidden = true;
+    $('#stage-empty-text').textContent = 'Pelo celular dá pra assistir, mas compartilhar a tela só funciona no computador.';
+  }
+}
+if (!('setSinkId' in HTMLMediaElement.prototype)) $('#set-output-label').hidden = true;
+
 window.api.appVersion().then((version) => {
   $('#app-version').textContent = `Discórdia ${version}`;
 });
@@ -1452,6 +1530,7 @@ function applyVoice(p, m) {
 }
 
 function applyOutputDevice(el) {
+  if (!el.setSinkId) return;
   const sink = Voice.settings.outputId === 'default' ? '' : Voice.settings.outputId;
   if (el.sinkId !== sink) el.setSinkId(sink).catch((err) => console.warn('Saída de áudio indisponível', err));
 }
@@ -1816,6 +1895,16 @@ document.addEventListener('mousedown', (e) => {
   if (e.target.closest('#emoji-picker') || e.target.closest('#btn-emoji')) return;
   $('#emoji-picker').hidden = true;
 });
+
+function notify(title, body) {
+  if (!('Notification' in window)) return;
+  if (IS_WEB && Notification.permission !== 'granted') return;
+  try {
+    new Notification(title, { body, silent: false });
+  } catch {
+    // celular: notificação só via service worker
+  }
+}
 
 // Mensagens não lidas: contador no título e janela piscando na barra de tarefas.
 let unread = 0;

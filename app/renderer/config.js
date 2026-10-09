@@ -4,3 +4,8 @@
 window.APP_CONFIG = {
   defaultServer: 'wss://discordia-server-dm3c.onrender.com',
 };
+
+// Na versão web, a própria página vem do servidor: usa o mesmo endereço.
+if (location.protocol === 'http:' || location.protocol === 'https:') {
+  window.APP_CONFIG.defaultServer = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
+}

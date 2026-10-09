@@ -5,9 +5,9 @@ services:
     name: discordia-server
     runtime: node
     plan: free
-    rootDir: server
-    buildCommand: npm install
-    startCommand: npm start
+    # Sem rootDir: o servidor também entrega a versão web do app (app/renderer).
+    buildCommand: cd server && npm install
+    startCommand: node server/server.js
     healthCheckPath: /
     envVars:
       - key: PASSWORD
