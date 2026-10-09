@@ -4,6 +4,7 @@
   "version": "1.1.0",
   "description": "Chat de voz e compartilhamento de tela entre amigos",
   "author": "Felipe",
+  "homepage": "https://github.com/felipeosouza06/app_discord2",
   "main": "main.js",
   "scripts": {
     "postinstall": "install-electron",
@@ -12,7 +13,8 @@
     "dist:linux": "electron-builder --linux",
     "dist:mac": "electron-builder --mac",
     "vendor": "mkdir -p renderer/vendor/noise/rnnoise && cd node_modules/@sapphi-red/web-noise-suppressor/dist && cp index.js rnnoise.wasm rnnoise_simd.wasm ../../../../renderer/vendor/noise/ && cp rnnoise/workletProcessor.js ../../../../renderer/vendor/noise/rnnoise/",
-    "release": "electron-builder --win --linux --publish always"
+    "release": "electron-builder --win --linux --publish always",
+    "dist:deb": "electron-builder --linux deb"
   },
   "build": {
     "appId": "com.felipe.discordia",
@@ -35,10 +37,13 @@
     },
     "linux": {
       "target": [
-        "AppImage"
+        "AppImage",
+        "deb"
       ],
       "category": "Network",
-      "artifactName": "Discordia-${version}.${ext}"
+      "artifactName": "Discordia-${version}.${ext}",
+      "maintainer": "Felipe Oliveira Souza <felipeosouza06@gmail.com>",
+      "synopsis": "Voz, chat e tela compartilhada com os amigos"
     },
     "mac": {
       "target": "dmg",
@@ -52,7 +57,10 @@
         "owner": "felipeosouza06",
         "repo": "app_discord2"
       }
-    ]
+    ],
+    "deb": {
+      "artifactName": "discordia_${version}_${arch}.${ext}"
+    }
   },
   "devDependencies": {
     "@sapphi-red/web-noise-suppressor": "^0.4.1",
