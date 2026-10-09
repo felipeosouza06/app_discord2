@@ -103,10 +103,20 @@
     <section id="chat" class="panel">
       <header class="chat-head">Chat</header>
       <ol id="messages"></ol>
+      <div id="emoji-picker" hidden></div>
+      <div id="attachment" hidden>
+        <img id="attachment-img" alt="Imagem a enviar">
+        <span class="attachment-hint">Imagem pronta. Escreva algo se quiser e aperte Enter.</span>
+        <button type="button" id="attachment-remove" class="icon ghost" title="Remover imagem"></button>
+      </div>
       <form id="chat-form">
+        <button type="button" id="btn-emoji" class="icon ghost" title="Emojis"></button>
         <input id="chat-input" maxlength="2000" placeholder="Mandar mensagem…" autocomplete="off">
+        <button type="button" id="btn-attach" class="icon ghost" title="Enviar imagem (ou cole com Ctrl+V)"></button>
+        <input type="file" id="file-input" accept="image/*" hidden>
         <button type="submit" id="chat-send" class="icon" title="Enviar"></button>
       </form>
+      <div id="drop-hint" hidden>Solte a imagem para enviar</div>
     </section>
   </div>
 
@@ -261,6 +271,10 @@
   <div id="reconnect-banner" role="status" hidden>
     <span class="spinner"></span>
     Conexão perdida. Reconectando…
+  </div>
+
+  <div id="lightbox" class="modal" hidden>
+    <img id="lightbox-img" alt="">
   </div>
 
   <div id="toast" hidden></div>

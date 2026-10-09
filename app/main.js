@@ -1,4 +1,4 @@
-const { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, net, protocol, session } = require('electron');
+const { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, net, protocol, session, shell } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
@@ -35,7 +35,17 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // Links do chat abrem no navegador do sistema, nunca dentro do app.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url.startsWith('app://')) return;
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+  });
+  win.on('focus', () => win.flashFrame(false));
   win.loadURL('app://discordia/index.html');
 }
 
@@ -76,6 +86,12 @@ ipcMain.handle('set-shortcuts', (event, shortcuts) => {
 });
 
 app.on('will-quit', () => globalShortcut.unregisterAll());
+
+// Pisca a janela na barra de tarefas (mensagem nova com o app em segundo plano).
+ipcMain.handle('flash', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && !win.isFocused()) win.flashFrame(true);
+});
 
 app.whenReady().then(() => {
   protocol.handle('app', (request) => {

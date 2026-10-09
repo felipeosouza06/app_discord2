@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld('api', {
   selectSource: (id, audio) => ipcRenderer.invoke('select-source', id, audio),
   setShortcuts: (shortcuts) => ipcRenderer.invoke('set-shortcuts', shortcuts),
   onShortcut: (callback) => ipcRenderer.on('shortcut', (_event, action) => callback(action)),
+  flash: () => ipcRenderer.invoke('flash'),
 });

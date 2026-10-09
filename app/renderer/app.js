@@ -51,6 +51,8 @@ const ICONS = {
   settings: svg('<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>'),
   volumeOff: svg('<path d="M11 5 6 9H2v6h4l5 4V5Z"/><line x1="22" x2="16" y1="9" y2="15"/><line x1="16" x2="22" y1="9" y2="15"/>'),
   exitFullscreen: svg('<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>'),
+  image: svg('<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>'),
+  smile: svg('<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   fullscreen: svg('<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>'),
 };
@@ -300,6 +302,7 @@ function leave(reason) {
   Object.assign(me, { muted: false, deafened: false, sharing: false });
   $('#messages').replaceChildren();
   lastMessage = null;
+  setAttachment(null);
   $('#screens').replaceChildren();
   $('#app').hidden = true;
   $('#login').hidden = false;
@@ -396,8 +399,9 @@ function onServerMessage(msg) {
 
     case 'chat':
       addChatMessage(msg);
-      if (document.hidden && msg.from !== myId) {
-        new Notification(msg.name, { body: msg.text, silent: false });
+      if (msg.from !== myId) {
+        bumpUnread();
+        if (document.hidden) new Notification(msg.name, { body: msg.text || '📷 Imagem', silent: false });
       }
       break;
   }
@@ -1181,7 +1185,7 @@ applyShortcuts();
 let lastMessage = null;
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
 
-function addChatMessage({ from, name, text, ts }) {
+function addChatMessage({ from, name, text, image, ts }) {
   const list = $('#messages');
   const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
   const grouped = lastMessage && lastMessage.from === from && ts - lastMessage.ts < GROUP_WINDOW_MS;
@@ -1201,14 +1205,49 @@ function addChatMessage({ from, name, text, ts }) {
     head.append(who, when);
     li.append(avatarEl(name), head);
   }
-  const body = document.createElement('div');
-  body.className = 'msg-text';
-  body.textContent = text;
-  body.title = timeLabel(ts);
-  li.append(body);
+  if (text) {
+    const body = document.createElement('div');
+    body.className = 'msg-text';
+    appendLinkified(body, text);
+    body.title = timeLabel(ts);
+    li.append(body);
+  }
+  if (image) {
+    const img = document.createElement('img');
+    img.className = 'chat-image';
+    img.src = image;
+    img.alt = `Imagem enviada por ${name}`;
+    img.onclick = () => openLightbox(image);
+    // A imagem muda a altura da lista quando termina de carregar.
+    img.onload = () => {
+      if (atBottom || from === myId) list.scrollTop = list.scrollHeight;
+    };
+    li.append(img);
+  }
   list.append(li);
   lastMessage = { from, ts };
   if (atBottom || from === myId) list.scrollTop = list.scrollHeight;
+}
+
+// Transforma endereços http(s) do texto em links (abrem no navegador).
+function appendLinkified(el, text) {
+  const pattern = /\bhttps?:\/\/[^\s<>"]+/gi;
+  let last = 0;
+  let match;
+  while ((match = pattern.exec(text))) {
+    // Pontuação no fim normalmente não faz parte do link ("veja https://x.com.").
+    const url = match[0].replace(/[.,!?;:)\]}'"]+$/, '');
+    if (match.index > last) el.append(text.slice(last, match.index));
+    const a = document.createElement('a');
+    a.href = url;
+    a.textContent = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    el.append(a);
+    last = match.index + url.length;
+    pattern.lastIndex = last;
+  }
+  if (last < text.length) el.append(text.slice(last));
 }
 
 function addSystemMessage(text) {
@@ -1516,7 +1555,9 @@ document.querySelectorAll('#picker-tabs .tab').forEach((tab) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  if (!$('#user-menu').hidden) closeUserMenu();
+  if (!$('#lightbox').hidden) $('#lightbox').hidden = true;
+  else if (!$('#emoji-picker').hidden) $('#emoji-picker').hidden = true;
+  else if (!$('#user-menu').hidden) closeUserMenu();
   else if (!$('#settings').hidden) closeSettings();
   else if (!$('#picker').hidden) closePicker();
 });
@@ -1525,9 +1566,151 @@ $('#chat-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const input = $('#chat-input');
   const text = input.value.trim();
-  if (!text) return;
-  send({ type: 'chat', text });
+  if (!text && !pendingImage) return;
+  send({ type: 'chat', text, image: pendingImage || undefined });
   input.value = '';
+  setAttachment(null);
+  $('#emoji-picker').hidden = true;
+});
+
+// ---------------------------------------------------------------------------
+// Chat: imagens, emojis e mensagens não lidas
+// ---------------------------------------------------------------------------
+
+const IMAGE_MAX_SIDE = 1600;
+const IMAGE_MAX_CHARS = 850 * 1024; // o servidor aceita até 900 KB
+let pendingImage = null;
+
+function readAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+// Reduz a imagem até caber no limite. GIFs pequenos vão como estão (animados).
+async function prepareImage(file) {
+  if (file.type === 'image/gif') {
+    const url = await readAsDataURL(file);
+    if (url.length <= IMAGE_MAX_CHARS) return url;
+  }
+  const bitmap = await createImageBitmap(file);
+  let scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const url = canvas.toDataURL('image/webp', 0.82);
+    if (url.length <= IMAGE_MAX_CHARS) return url;
+    scale *= 0.75;
+  }
+  throw new Error('Imagem grande demais');
+}
+
+async function attachFile(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    toast('Só dá pra enviar imagens.');
+    return;
+  }
+  try {
+    setAttachment(await prepareImage(file));
+    $('#chat-input').focus();
+  } catch (err) {
+    console.error(err);
+    toast('Não foi possível usar essa imagem.');
+  }
+}
+
+function setAttachment(url) {
+  pendingImage = url;
+  $('#attachment').hidden = !url;
+  $('#attachment-img').src = url || '';
+}
+
+function openLightbox(url) {
+  $('#lightbox-img').src = url;
+  $('#lightbox').hidden = false;
+}
+
+$('#btn-attach').innerHTML = ICONS.image;
+$('#attachment-remove').innerHTML = ICONS.close;
+$('#btn-attach').onclick = () => $('#file-input').click();
+$('#file-input').onchange = (e) => {
+  attachFile(e.target.files[0]);
+  e.target.value = '';
+};
+$('#attachment-remove').onclick = () => setAttachment(null);
+$('#chat-input').addEventListener('paste', (e) => {
+  const file = [...e.clipboardData.files].find((f) => f.type.startsWith('image/'));
+  if (!file) return;
+  e.preventDefault();
+  attachFile(file);
+});
+$('#lightbox').onclick = () => { $('#lightbox').hidden = true; };
+
+// Arrastar e soltar imagem no chat.
+let dragDepth = 0;
+const chatPanel = $('#chat');
+chatPanel.addEventListener('dragenter', (e) => {
+  if (![...e.dataTransfer.types].includes('Files')) return;
+  dragDepth++;
+  $('#drop-hint').hidden = false;
+});
+chatPanel.addEventListener('dragleave', () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) $('#drop-hint').hidden = true;
+});
+chatPanel.addEventListener('dragover', (e) => e.preventDefault());
+chatPanel.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  $('#drop-hint').hidden = true;
+  attachFile(e.dataTransfer.files[0]);
+});
+// Soltar arquivo fora do chat não pode fazer a janela "abrir" o arquivo.
+window.addEventListener('dragover', (e) => e.preventDefault());
+window.addEventListener('drop', (e) => e.preventDefault());
+
+const EMOJIS = [
+  '😀', '😂', '🤣', '😅', '😊', '😍', '😘', '😎', '🤔', '🙄', '😴', '😭', '😡', '🤯', '🥳', '😱',
+  '🤡', '💀', '👻', '🤖', '👍', '👎', '👏', '🙏', '💪', '👀', '🙌', '🤝', '✌️', '🤞', '👋', '🫡',
+  '❤️', '🔥', '💯', '✨', '🎉', '🎮', '🕹️', '🏆', '⚽', '🍕', '🍔', '🍺', '☕', '🎵', '🎧', '📺',
+  '💻', '📷', '✅', '❌', '⚠️', '❓', '💤', '🚀', '🌙', '☀️', '🐶', '🐱', '🤫', '🫠', '😬', '🥲',
+];
+$('#btn-emoji').innerHTML = ICONS.smile;
+$('#emoji-picker').append(...EMOJIS.map((emoji) => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = emoji;
+  button.onclick = () => {
+    const input = $('#chat-input');
+    const start = input.selectionStart ?? input.value.length;
+    input.setRangeText(emoji, start, input.selectionEnd ?? start, 'end');
+    input.focus();
+  };
+  return button;
+}));
+$('#btn-emoji').onclick = () => { $('#emoji-picker').hidden = !$('#emoji-picker').hidden; };
+document.addEventListener('mousedown', (e) => {
+  if ($('#emoji-picker').hidden) return;
+  if (e.target.closest('#emoji-picker') || e.target.closest('#btn-emoji')) return;
+  $('#emoji-picker').hidden = true;
+});
+
+// Mensagens não lidas: contador no título e janela piscando na barra de tarefas.
+let unread = 0;
+function bumpUnread() {
+  if (document.hasFocus()) return;
+  unread++;
+  document.title = `(${unread}) Discórdia`;
+  window.api.flash();
+}
+window.addEventListener('focus', () => {
+  unread = 0;
+  document.title = 'Discórdia';
 });
 
 window.addEventListener('beforeunload', () => {

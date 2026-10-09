@@ -8,7 +8,12 @@ const { WebSocketServer } = require('ws');
 const PORT = Number(process.env.PORT) || 3000;
 const PASSWORD = process.env.PASSWORD || '';
 const HISTORY_SIZE = 100;
-const MAX_MESSAGE_BYTES = 64 * 1024;
+// Imagens do chat chegam como data URL (o app já reduz antes de enviar).
+const MAX_IMAGE_CHARS = 900 * 1024;
+const MAX_MESSAGE_BYTES = MAX_IMAGE_CHARS + 64 * 1024;
+// Teto de memória do histórico de cada sala, por causa das imagens.
+const HISTORY_MAX_CHARS = 12 * 1024 * 1024;
+const IMAGE_PATTERN = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 
 // Servidor TURN (opcional): repassa áudio/vídeo quando a conexão direta entre
 // dois amigos não é possível (CGNAT, 4G, redes restritas). As credenciais ficam
@@ -66,6 +71,18 @@ function broadcastRooms() {
   const msg = { type: 'rooms', rooms: roomsSummary() };
   for (const client of wss.clients) {
     if (client.room) send(client, msg);
+  }
+}
+
+function historyChars(entry) {
+  return entry.text.length + (entry.image ? entry.image.length : 0);
+}
+
+function addToHistory(room, entry) {
+  room.history.push(entry);
+  room.historyChars = (room.historyChars || 0) + historyChars(entry);
+  while (room.history.length > HISTORY_SIZE || room.historyChars > HISTORY_MAX_CHARS) {
+    room.historyChars -= historyChars(room.history.shift());
   }
 }
 
@@ -144,10 +161,12 @@ wss.on('connection', (ws) => {
       }
       case 'chat': {
         const text = cleanText(msg.text, 2000);
-        if (!text) return;
-        const entry = { type: 'chat', from: ws.id, name: ws.name, text, ts: Date.now() };
-        room.history.push(entry);
-        if (room.history.length > HISTORY_SIZE) room.history.shift();
+        const image = typeof msg.image === 'string' && msg.image.length <= MAX_IMAGE_CHARS && IMAGE_PATTERN.test(msg.image)
+          ? msg.image
+          : undefined;
+        if (!text && !image) return;
+        const entry = { type: 'chat', from: ws.id, name: ws.name, text, image, ts: Date.now() };
+        addToHistory(room, entry);
         broadcast(room, entry);
         break;
       }
