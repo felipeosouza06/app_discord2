@@ -767,3 +767,21 @@ input.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2
   animation: spin .8s linear infinite;
 }
 #chat-input:disabled { opacity: .5; }
+
+/* ---------- Atalhos ---------- */
+
+.shortcut-row { display: flex; align-items: center; gap: 10px; }
+.shortcut-row + .shortcut-row { margin-top: 10px; }
+.shortcut-row > span { flex: 1; }
+.shortcut-key {
+  min-width: 170px;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-size: 13px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+}
+.shortcut-key.empty { color: var(--faint); }
+.shortcut-key.capturing { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(139, 92, 246, .2); color: var(--accent); }
+.shortcut-key.invalid { border-color: var(--red); }
+.shortcut-clear { width: 34px; height: 34px; }
+.shortcut-error { color: var(--red); margin: 10px 0 0; }

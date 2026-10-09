@@ -145,6 +145,8 @@ function playTone(freqs) {
 }
 const SOUND_JOIN = [660, 880];
 const SOUND_LEAVE = [660, 440];
+const SOUND_MUTE = [520, 390];
+const SOUND_UNMUTE = [390, 520];
 
 function timeLabel(ts) {
   return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -956,6 +958,140 @@ function toggleDeafen() {
   sendState();
 }
 
+// Mutar/desativar pelo botão ou atalho, com um bip para saber o que aconteceu
+// mesmo sem olhar a tela (ex.: no meio de um jogo).
+function userToggleMute() {
+  if (!micStream && !me.deafened) return;
+  toggleMute();
+  playTone(me.muted ? SOUND_MUTE : SOUND_UNMUTE);
+}
+
+function userToggleDeafen() {
+  const deafening = !me.deafened;
+  if (deafening) playTone(SOUND_MUTE);
+  toggleDeafen();
+  if (!deafening) playTone(SOUND_UNMUTE);
+}
+
+// ---------------------------------------------------------------------------
+// Atalhos globais
+// ---------------------------------------------------------------------------
+
+const SHORTCUT_DEFAULTS = { mute: 'CommandOrControl+Shift+M', deafen: 'CommandOrControl+Shift+D' };
+const shortcuts = { ...SHORTCUT_DEFAULTS, ...storageGet('shortcuts') };
+let capturingAction = null;
+
+const KEY_NAMES = {
+  Space: 'Space', Enter: 'Enter', Tab: 'Tab', Backspace: 'Backspace', Delete: 'Delete', Insert: 'Insert',
+  Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown',
+  ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+  Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'",
+  Backquote: '`', Backslash: '\\', Comma: ',', Period: '.', Slash: '/',
+};
+
+// Converte um evento de teclado no formato de atalho do Electron.
+function acceleratorFrom(event) {
+  const { code } = event;
+  let key = null;
+  if (/^Key[A-Z]$/.test(code)) key = code.slice(3);
+  else if (/^Digit[0-9]$/.test(code)) key = code.slice(5);
+  else if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) key = code;
+  else if (/^Numpad[0-9]$/.test(code)) key = `num${code.slice(6)}`;
+  else if (KEY_NAMES[code]) key = KEY_NAMES[code];
+  if (!key) return null;
+  const mods = [];
+  if (event.ctrlKey) mods.push('CommandOrControl');
+  if (event.altKey) mods.push('Alt');
+  if (event.shiftKey) mods.push('Shift');
+  if (event.metaKey) mods.push('Super');
+  // Sem modificador, só teclas F: senão o atalho "rouba" uma tecla comum do jogo.
+  if (mods.length === 0 && !/^F\d+$/.test(key)) return null;
+  return [...mods, key].join('+');
+}
+
+function shortcutLabel(accelerator) {
+  return accelerator
+    .replace('CommandOrControl', window.api.platform === 'darwin' ? 'Cmd' : 'Ctrl')
+    .replace('Super', window.api.platform === 'darwin' ? 'Cmd' : 'Win')
+    .split('+').join(' + ');
+}
+
+async function applyShortcuts() {
+  const result = await window.api.setShortcuts(shortcuts);
+  const failed = Object.keys(shortcuts).filter((a) => shortcuts[a] && result[a] === false);
+  document.querySelectorAll('.shortcut-key').forEach((b) => {
+    b.classList.toggle('invalid', failed.includes(b.dataset.action));
+  });
+  const error = $('#shortcut-error');
+  error.hidden = failed.length === 0;
+  error.textContent = 'Esse atalho já está sendo usado por outro programa. Escolha outra combinação.';
+}
+
+function renderShortcuts() {
+  document.querySelectorAll('.shortcut-key').forEach((b) => {
+    const action = b.dataset.action;
+    const capturing = capturingAction === action;
+    b.classList.toggle('capturing', capturing);
+    b.classList.toggle('empty', !capturing && !shortcuts[action]);
+    b.textContent = capturing ? 'Aperte as teclas…' : (shortcuts[action] ? shortcutLabel(shortcuts[action]) : 'Nenhum');
+  });
+}
+
+function startCapture(action) {
+  capturingAction = action;
+  // Desliga os atalhos enquanto grava, para não mutar ao apertar a combinação atual.
+  window.api.setShortcuts({});
+  renderShortcuts();
+}
+
+function stopCapture() {
+  capturingAction = null;
+  renderShortcuts();
+  applyShortcuts();
+}
+
+function saveShortcut(action, accelerator) {
+  shortcuts[action] = accelerator;
+  // Mesma combinação para as duas ações não faz sentido: tira da outra.
+  for (const other of Object.keys(shortcuts)) {
+    if (other !== action && accelerator && shortcuts[other] === accelerator) shortcuts[other] = '';
+  }
+  storageSet('shortcuts', shortcuts);
+}
+
+document.querySelectorAll('.shortcut-key').forEach((b) => {
+  b.onclick = () => (capturingAction === b.dataset.action ? stopCapture() : startCapture(b.dataset.action));
+});
+document.querySelectorAll('.shortcut-clear').forEach((b) => {
+  b.innerHTML = ICONS.close;
+  b.onclick = () => {
+    saveShortcut(b.dataset.action, '');
+    stopCapture();
+  };
+});
+document.addEventListener('keydown', (e) => {
+  if (!capturingAction) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.key === 'Escape') {
+    stopCapture();
+    return;
+  }
+  const accelerator = acceleratorFrom(e);
+  if (!accelerator) return; // só modificadores até agora, ou tecla não suportada
+  saveShortcut(capturingAction, accelerator);
+  stopCapture();
+}, true);
+
+window.api.onShortcut((action) => {
+  if (!myId) return;
+  if (action === 'mute') userToggleMute();
+  else if (action === 'deafen') userToggleDeafen();
+});
+
+renderShortcuts();
+applyShortcuts();
+
 // Mensagens seguidas da mesma pessoa (em até 5 min) ficam agrupadas.
 let lastMessage = null;
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
@@ -1172,6 +1308,7 @@ async function openSettings() {
 function closeSettings() {
   if ($('#settings').hidden) return;
   $('#settings').hidden = true;
+  if (capturingAction) stopCapture();
   Voice.stopTest();
   cancelAnimationFrame(meterFrame);
   // Fora de uma sala o microfone só estava aberto pra testar.
@@ -1278,8 +1415,8 @@ navigator.mediaDevices.addEventListener('devicechange', () => {
 // ---------------------------------------------------------------------------
 
 $('#chat-send').innerHTML = ICONS.send;
-$('#btn-mic').onclick = toggleMute;
-$('#btn-deafen').onclick = toggleDeafen;
+$('#btn-mic').onclick = userToggleMute;
+$('#btn-deafen').onclick = userToggleDeafen;
 $('#btn-share').onclick = openPicker;
 $('#btn-share-big').onclick = openPicker;
 $('#btn-leave').onclick = () => leave();

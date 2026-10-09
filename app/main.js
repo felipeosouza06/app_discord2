@@ -1,4 +1,4 @@
-const { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session } = require('electron');
+const { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, net, protocol, session } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
@@ -56,6 +56,26 @@ ipcMain.handle('get-sources', async () => {
 ipcMain.handle('select-source', (_event, id, audio) => {
   pending = { id, audio: !!audio };
 });
+
+// Atalhos globais (funcionam mesmo com outra janela, como um jogo, em foco).
+// Recebe { acao: 'CommandOrControl+Shift+M', ... } e devolve { acao: registrou? }.
+ipcMain.handle('set-shortcuts', (event, shortcuts) => {
+  globalShortcut.unregisterAll();
+  const result = {};
+  for (const [action, accelerator] of Object.entries(shortcuts)) {
+    if (!accelerator) continue;
+    try {
+      result[action] = globalShortcut.register(accelerator, () => {
+        if (!event.sender.isDestroyed()) event.sender.send('shortcut', action);
+      });
+    } catch {
+      result[action] = false;
+    }
+  }
+  return result;
+});
+
+app.on('will-quit', () => globalShortcut.unregisterAll());
 
 app.whenReady().then(() => {
   protocol.handle('app', (request) => {

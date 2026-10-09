@@ -230,6 +230,22 @@
             <input type="checkbox" id="set-agc" class="switch">
           </label>
         </section>
+
+        <section class="settings-section">
+          <h3>Atalhos</h3>
+          <p class="hint">Funcionam mesmo com o jogo ou outra janela em primeiro plano. Clique no atalho e aperte a combinação nova (Esc cancela).</p>
+          <div class="shortcut-row">
+            <span>Mutar / desmutar microfone</span>
+            <button class="shortcut-key" data-action="mute"></button>
+            <button class="icon ghost shortcut-clear" data-action="mute" title="Remover atalho"></button>
+          </div>
+          <div class="shortcut-row">
+            <span>Desativar / ativar áudio</span>
+            <button class="shortcut-key" data-action="deafen"></button>
+            <button class="icon ghost shortcut-clear" data-action="deafen" title="Remover atalho"></button>
+          </div>
+          <p id="shortcut-error" class="hint shortcut-error" hidden></p>
+        </section>
       </div>
     </div>
   </div>
