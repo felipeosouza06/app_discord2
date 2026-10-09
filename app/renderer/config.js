@@ -2,5 +2,5 @@
 // Troque pelo endereço do seu servidor antes de gerar o app para os amigos,
 // ex.: 'wss://discordia-server.onrender.com'
 window.APP_CONFIG = {
-  defaultServer: 'ws://localhost:3000',
+  defaultServer: 'wss://discordia-server-dm3c.onrender.com',
 };
