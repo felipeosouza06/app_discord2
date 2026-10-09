@@ -53,6 +53,7 @@ const ICONS = {
   exitFullscreen: svg('<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>'),
   image: svg('<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>'),
   smile: svg('<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/>'),
+  eye: svg('<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   fullscreen: svg('<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>'),
 };
@@ -78,7 +79,8 @@ let currentRoom = '';
 let roomList = [];
 let retryTimer = null;
 
-const me = { muted: false, deafened: false, sharing: false };
+// watching: ids dos amigos cuja transmissão estou vendo agora.
+const me = { muted: false, deafened: false, sharing: false, watching: [] };
 
 // id -> { id, name, state, pc, polite, makingOffer, ignoreOffer, queue, screenSenders, media }
 // media: Map<streamId, { kind: 'audio' | 'video', el }>
@@ -299,7 +301,7 @@ function leave(reason) {
   stopMic();
   myId = null;
   currentRoom = '';
-  Object.assign(me, { muted: false, deafened: false, sharing: false });
+  Object.assign(me, { muted: false, deafened: false, sharing: false, watching: [] });
   $('#messages').replaceChildren();
   lastMessage = null;
   setAttachment(null);
@@ -653,6 +655,7 @@ async function startShare(sourceId, qualityKey, withAudio) {
   screenQuality = q;
   peers.forEach(addScreenTo);
   createTile(stream, 'Você', true).dataset.local = 'true';
+  updateViewers();
   me.sharing = true;
   updateControls();
   sendState();
@@ -706,6 +709,12 @@ function createTile(stream, label, isLocal) {
   const name = document.createElement('span');
   name.textContent = label;
   badge.append(live, name);
+  if (isLocal) {
+    const viewers = document.createElement('span');
+    viewers.className = 'viewers';
+    viewers.hidden = true;
+    badge.append(viewers);
+  }
 
   const bar = document.createElement('div');
   bar.className = 'tile-bar';
@@ -774,7 +783,41 @@ document.addEventListener('fullscreenchange', () => {
   document.querySelectorAll('.tile').forEach(updateFullscreenButton);
 });
 
+// Conta como "assistindo" quem tem o vídeo da transmissão na tela e o app
+// visível (minimizado não conta). Avisa o servidor quando isso muda.
+function updateWatching() {
+  const watching = document.hidden
+    ? []
+    : [...peers.values()].filter((p) => [...p.media.values()].some((m) => m.kind === 'video')).map((p) => p.id);
+  if (watching.join() === me.watching.join()) return;
+  me.watching = watching;
+  sendState();
+}
+
+function viewersOfMe() {
+  return [...peers.values()].filter((p) => (p.state.watching || []).includes(myId));
+}
+
+// Mostra no meu vídeo e no meu status quantos amigos estão assistindo.
+function updateViewers() {
+  const viewers = viewersOfMe();
+  const el = document.querySelector('.tile[data-local] .viewers');
+  if (el) {
+    el.hidden = viewers.length === 0;
+    el.innerHTML = `${ICONS.eye}<span>${viewers.length}</span>`;
+    el.title = `${viewers.map((p) => p.name).join(', ')} ${viewers.length === 1 ? 'está' : 'estão'} assistindo`;
+  }
+  if (me.sharing) {
+    $('#me-status').textContent = viewers.length ? `Ao vivo · ${viewers.length} assistindo` : 'Transmitindo a tela';
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (myId) updateWatching();
+});
+
 function updateStageEmpty() {
+  updateWatching();
   // Remove blocos cujo <video> já foi retirado da página.
   document.querySelectorAll('.tile:not([data-local])').forEach((tile) => {
     if (!tile.querySelector('video')) tile.remove();
@@ -899,6 +942,7 @@ function renderUsers() {
     li.append(avatar, name, icons);
     return li;
   }));
+  updateViewers();
 }
 
 function updateControls() {
@@ -926,7 +970,7 @@ function updateControls() {
   const status = $('#me-status');
   status.className = '';
   if (me.sharing) {
-    status.textContent = 'Transmitindo a tela';
+    status.textContent = viewersOfMe().length ? `Ao vivo · ${viewersOfMe().length} assistindo` : 'Transmitindo a tela';
     status.className = 'live-status';
   } else if (me.deafened) {
     status.textContent = 'Áudio desativado';

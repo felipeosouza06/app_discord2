@@ -109,7 +109,7 @@ function join(ws, msg) {
 
   ws.id = crypto.randomUUID();
   ws.name = name;
-  ws.state = { muted: false, deafened: false, sharing: false };
+  ws.state = { muted: false, deafened: false, sharing: false, watching: [] };
   ws.room = room;
   ws.roomName = roomName;
 
@@ -172,7 +172,11 @@ wss.on('connection', (ws) => {
       }
       case 'state': {
         const s = msg.state || {};
-        ws.state = { muted: !!s.muted, deafened: !!s.deafened, sharing: !!s.sharing };
+        // watching: ids de quem a pessoa está assistindo a transmissão agora.
+        const watching = Array.isArray(s.watching)
+          ? s.watching.filter((id) => typeof id === 'string').slice(0, 20).map((id) => id.slice(0, 64))
+          : [];
+        ws.state = { muted: !!s.muted, deafened: !!s.deafened, sharing: !!s.sharing, watching };
         broadcast(room, { type: 'peer-state', id: ws.id, state: ws.state }, ws.id);
         break;
       }
