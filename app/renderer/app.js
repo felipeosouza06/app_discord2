@@ -235,7 +235,10 @@ function connectServer(deadline) {
     // Servidor dormindo: continua tentando até ele acordar.
     if (!opened && !loginError && Date.now() < deadline) {
       status.classList.add('waiting');
-      status.textContent = 'Acordando o servidor… isso pode levar até 1 minuto.';
+      // Mostra o endereço: ajuda a perceber quando ele está errado (ex.: localhost sem servidor).
+      let host = session.server;
+      try { host = new URL(session.server).host; } catch { /* mostra como foi digitado */ }
+      status.textContent = `Tentando conectar em ${host}… Se o servidor estava dormindo, pode levar até 1 minuto.`;
       retryTimer = setTimeout(() => connectServer(deadline), RETRY_DELAY_MS);
       return;
     }
