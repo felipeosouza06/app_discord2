@@ -7,4 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   setShortcuts: (shortcuts) => ipcRenderer.invoke('set-shortcuts', shortcuts),
   onShortcut: (callback) => ipcRenderer.on('shortcut', (_event, action) => callback(action)),
   flash: () => ipcRenderer.invoke('flash'),
+  appVersion: () => ipcRenderer.invoke('app-version'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  onUpdateReady: (callback) => ipcRenderer.on('update-ready', (_event, version) => callback(version)),
 });

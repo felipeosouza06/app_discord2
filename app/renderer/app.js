@@ -1225,6 +1225,24 @@ window.api.onShortcut((action) => {
 renderShortcuts();
 applyShortcuts();
 
+// ---------------------------------------------------------------------------
+// Atualização automática
+// ---------------------------------------------------------------------------
+
+window.api.onUpdateReady((version) => {
+  $('#update-version').textContent = version;
+  $('#update-banner').hidden = false;
+});
+$('#update-install').onclick = () => window.api.installUpdate();
+// "Depois": a atualização é instalada sozinha quando o app for fechado.
+$('#update-later').onclick = () => {
+  $('#update-banner').hidden = true;
+  toast('A atualização será instalada quando você fechar o app.');
+};
+window.api.appVersion().then((version) => {
+  $('#app-version').textContent = `Discórdia ${version}`;
+});
+
 // Mensagens seguidas da mesma pessoa (em até 5 min) ficam agrupadas.
 let lastMessage = null;
 const GROUP_WINDOW_MS = 5 * 60 * 1000;

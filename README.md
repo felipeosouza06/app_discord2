@@ -9,9 +9,17 @@ O áudio e o vídeo vão **direto de um amigo pro outro** (WebRTC). O servidor s
 
 ## Rodando localmente
 
+Use o Node 22 (`nvm use`, porque o projeto tem um `.nvmrc`).
+
 ```bash
 cd server && npm install && npm start      # sobe na porta 3000
 cd app && npm install && npm start         # abre o app
+```
+
+No Linux, depois de cada `npm install` do app, rode uma vez:
+
+```bash
+sudo chown root:root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 ```
 
 > No terminal do VS Code, rode `unset ELECTRON_RUN_AS_NODE` antes do `npm start` do app. Senão o Electron abre como se fosse Node e dá erro.
@@ -42,18 +50,25 @@ As credenciais ficam só no servidor e são entregues a quem entra com a senha c
 
 ## Gerando o app pros amigos
 
-1. Coloque o endereço do servidor em [app/renderer/config.js](app/renderer/config.js). Assim ele já vem preenchido.
-2. Gere o executável:
+O app se atualiza sozinho a partir dos [Releases do GitHub](https://github.com/felipeosouza06/app_discord2/releases). Por isso o repositório precisa ser público. Seus amigos instalam uma vez pelo `Discordia-Setup-X.Y.Z.exe`, e as próximas versões chegam sozinhas.
+
+### Publicar uma versão nova
+
+1. Aumente o `version` em [app/package.json](app/package.json) (ex.: `1.1.0` → `1.2.0`).
+2. Gere e publique. O token é do GitHub, criado em *Settings → Developer settings → Fine-grained tokens*, com acesso só a este repositório e permissão **Contents: Read and write**:
 
 ```bash
 cd app
-npm run dist:win     # Windows: dist/Discordia 1.0.0.exe (portátil, não precisa instalar)
-npm run dist:linux   # Linux: AppImage
+GH_TOKEN=seu_token npm run release
 ```
 
-O `.dmg` do Mac precisa ser gerado num Mac.
+3. Abra a página de Releases. O electron-builder cria um rascunho com a versão nova; clique em **Publish release**.
 
-Como o `.exe` não é assinado, o Windows mostra o aviso do SmartScreen. É só clicar em "Mais informações" e depois em "Executar assim mesmo".
+Depois disso, quem estiver com o app aberto recebe o aviso "Nova versão pronta" em até 4 horas, ou na próxima vez que abrir o app.
+
+Sem token, também dá pra publicar à mão: rode `npm run dist:win`, crie um Release com a tag `vX.Y.Z` e envie `Discordia-Setup-X.Y.Z.exe`, `Discordia-Setup-X.Y.Z.exe.blockmap` e `latest.yml`, que ficam em `app/dist/`.
+
+O instalador não é assinado, então o Windows mostra o aviso do SmartScreen na primeira instalação. É só clicar em "Mais informações" e depois em "Executar assim mesmo". As atualizações seguintes não pedem nada.
 
 ## Limitações
 

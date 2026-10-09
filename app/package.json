@@ -1,7 +1,7 @@
 {
   "name": "discordia",
   "productName": "Discordia",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Chat de voz e compartilhamento de tela entre amigos",
   "author": "Felipe",
   "main": "main.js",
@@ -11,7 +11,8 @@
     "dist:win": "electron-builder --win",
     "dist:linux": "electron-builder --linux",
     "dist:mac": "electron-builder --mac",
-    "vendor": "mkdir -p renderer/vendor/noise/rnnoise && cd node_modules/@sapphi-red/web-noise-suppressor/dist && cp index.js rnnoise.wasm rnnoise_simd.wasm ../../../../renderer/vendor/noise/ && cp rnnoise/workletProcessor.js ../../../../renderer/vendor/noise/rnnoise/"
+    "vendor": "mkdir -p renderer/vendor/noise/rnnoise && cd node_modules/@sapphi-red/web-noise-suppressor/dist && cp index.js rnnoise.wasm rnnoise_simd.wasm ../../../../renderer/vendor/noise/ && cp rnnoise/workletProcessor.js ../../../../renderer/vendor/noise/rnnoise/",
+    "release": "electron-builder --win --linux --publish always"
   },
   "build": {
     "appId": "com.felipe.discordia",
@@ -24,30 +25,41 @@
     ],
     "win": {
       "target": [
-        "portable",
         "nsis"
       ],
       "signAndEditExecutable": true
     },
     "nsis": {
-      "oneClick": true
+      "oneClick": true,
+      "artifactName": "Discordia-Setup-${version}.${ext}"
     },
     "linux": {
       "target": [
         "AppImage"
       ],
-      "category": "Network"
+      "category": "Network",
+      "artifactName": "Discordia-${version}.${ext}"
     },
     "mac": {
       "target": "dmg",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "O Discórdia usa o microfone para o chat de voz."
       }
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "felipeosouza06",
+        "repo": "app_discord2"
+      }
+    ]
   },
   "devDependencies": {
     "@sapphi-red/web-noise-suppressor": "^0.4.1",
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, net, protocol, session, shell } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { autoUpdater } = require('electron-updater');
 
 const RENDERER_DIR = path.join(__dirname, 'renderer');
 
@@ -47,7 +48,26 @@ function createWindow() {
   });
   win.on('focus', () => win.flashFrame(false));
   win.loadURL('app://discordia/index.html');
+  setupUpdates(win);
 }
+
+// Atualização automática a partir dos Releases do GitHub (só no app instalado).
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+let updateTimer = null;
+
+function setupUpdates(win) {
+  if (!app.isPackaged || updateTimer) return;
+  autoUpdater.on('update-downloaded', (info) => {
+    if (!win.isDestroyed()) win.webContents.send('update-ready', info.version);
+  });
+  autoUpdater.on('error', (err) => console.error('Falha ao procurar atualização:', err.message));
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  check();
+  updateTimer = setInterval(check, UPDATE_CHECK_INTERVAL_MS);
+}
+
+ipcMain.handle('install-update', () => autoUpdater.quitAndInstall());
+ipcMain.handle('app-version', () => app.getVersion());
 
 ipcMain.handle('get-sources', async () => {
   const sources = await desktopCapturer.getSources({
