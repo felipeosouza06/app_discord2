@@ -785,3 +785,49 @@ input.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2
 .shortcut-key.invalid { border-color: var(--red); }
 .shortcut-clear { width: 34px; height: 34px; }
 .shortcut-error { color: var(--red); margin: 10px 0 0; }
+
+/* ---------- Salas ---------- */
+
+.section-label.with-action { display: flex; align-items: center; justify-content: space-between; padding-right: 12px; }
+#btn-new-room { width: 26px; height: 26px; font-size: 18px; line-height: 1; padding: 0; }
+#new-room-form { padding: 2px 12px 6px; }
+#new-room-input { padding: 8px 10px; font-size: 13px; }
+#room-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px;
+  max-height: 38%;
+  overflow-y: auto;
+  flex: none;
+}
+.room {
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--muted);
+  transition: background .15s, color .15s;
+}
+.room:hover { background: var(--surface-2); color: var(--text); }
+.room.current { background: rgba(139, 92, 246, .14); color: var(--text); cursor: default; }
+.room-head { display: flex; align-items: center; gap: 8px; }
+.room-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.room-name::before { content: "# "; color: var(--faint); }
+.room-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+.room.current .room-count { background: var(--gradient); color: #fff; }
+.room-users {
+  margin: 2px 0 0 14px;
+  font-size: 12px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

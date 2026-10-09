@@ -72,6 +72,8 @@ let loginError = '';
 // Servidor e mensagem de entrada da sessão atual, usados para reconectar.
 let session = null;
 let reconnecting = false;
+let currentRoom = '';
+let roomList = [];
 let retryTimer = null;
 
 const me = { muted: false, deafened: false, sharing: false };
@@ -294,6 +296,7 @@ function leave(reason) {
   unmonitor('local');
   stopMic();
   myId = null;
+  currentRoom = '';
   Object.assign(me, { muted: false, deafened: false, sharing: false });
   $('#messages').replaceChildren();
   lastMessage = null;
@@ -317,8 +320,12 @@ function onServerMessage(msg) {
 
     case 'welcome': {
       const wasReconnecting = reconnecting;
+      const firstJoin = !currentRoom;
       reconnecting = false;
       myId = msg.id;
+      currentRoom = msg.room;
+      roomList = msg.rooms || [];
+      renderRooms();
       $('#login-status').classList.remove('waiting');
       iceConfig = { iceServers: [...ICE_CONFIG.iceServers, ...(msg.iceServers || [])] };
       $('#login').hidden = true;
@@ -327,23 +334,31 @@ function onServerMessage(msg) {
       initMePanel();
       unmonitor('local');
       if (micStream) monitor('local', micStream, myId);
-      else if (!wasReconnecting) toast('Microfone não encontrado — você entrou só para ouvir.');
+      else if (firstJoin) toast('Microfone não encontrado — você entrou só para ouvir.');
       $('#messages').replaceChildren();
       lastMessage = null;
       msg.history.forEach(addChatMessage);
+      // Garante que não sobrou ninguém da sala anterior (troca de sala/reconexão).
+      for (const id of [...peers.keys()]) removePeer(id);
       // Quem acabou de entrar espera as ofertas de quem já estava na sala.
       msg.peers.forEach((peer) => createPeer(peer, false));
       updateControls();
       renderUsers();
+      // Depois de reconectar ou trocar de sala o servidor nos trata como
+      // recém-chegados: reenvia mudo/transmissão.
+      if (me.muted || me.deafened || me.sharing) sendState();
       if (wasReconnecting) {
         setReconnectBanner(false);
-        // O servidor nos trata como recém-chegados: reenvia mudo/transmissão.
-        sendState();
         toast('Reconectado!');
       }
       $('#chat-input').focus();
       break;
     }
+
+    case 'rooms':
+      roomList = msg.rooms;
+      renderRooms();
+      break;
 
     case 'peer-joined':
       createPeer(msg.peer, true);
@@ -957,6 +972,76 @@ function toggleDeafen() {
   updateControls();
   sendState();
 }
+
+// ---------------------------------------------------------------------------
+// Salas
+// ---------------------------------------------------------------------------
+
+function normalizeRoom(name) {
+  return name.trim().slice(0, 32).toLowerCase();
+}
+
+function renderRooms() {
+  const list = $('#room-list');
+  list.replaceChildren(...roomList.map((room) => {
+    const li = document.createElement('li');
+    const isCurrent = room.name === currentRoom;
+    li.className = 'room' + (isCurrent ? ' current' : '');
+    li.title = isCurrent ? 'Você está aqui' : `Entrar em #${room.name}`;
+    const head = document.createElement('div');
+    head.className = 'room-head';
+    const name = document.createElement('span');
+    name.className = 'room-name';
+    name.textContent = room.name;
+    head.append(name);
+    if (room.users.length) {
+      const count = document.createElement('span');
+      count.className = 'room-count';
+      count.textContent = room.users.length;
+      head.append(count);
+    }
+    li.append(head);
+    // Nas outras salas, mostra quem está lá (a sala atual tem a lista completa abaixo).
+    if (!isCurrent && room.users.length) {
+      const who = document.createElement('div');
+      who.className = 'room-users';
+      who.textContent = room.users.join(', ');
+      li.append(who);
+    }
+    if (!isCurrent) li.onclick = () => switchRoom(room.name);
+    return li;
+  }));
+}
+
+function switchRoom(name) {
+  const room = normalizeRoom(name);
+  if (!room || !session || !myId || room === currentRoom) return;
+  // Desfaz as conexões da sala atual; o 'welcome' da nova sala recria tudo.
+  for (const id of [...peers.keys()]) removePeer(id);
+  session.joinMsg = { ...session.joinMsg, room };
+  storageSet('login', { ...storageGet('login'), room });
+  send(session.joinMsg);
+}
+
+$('#btn-new-room').onclick = () => {
+  const form = $('#new-room-form');
+  form.hidden = !form.hidden;
+  if (!form.hidden) $('#new-room-input').focus();
+};
+$('#new-room-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = $('#new-room-input');
+  switchRoom(input.value);
+  input.value = '';
+  $('#new-room-form').hidden = true;
+});
+$('#new-room-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    e.stopPropagation();
+    $('#new-room-input').value = '';
+    $('#new-room-form').hidden = true;
+  }
+});
 
 // Mutar/desativar pelo botão ou atalho, com um bip para saber o que aconteceu
 // mesmo sem olhar a tela (ex.: no meio de um jogo).

@@ -48,8 +48,28 @@ function publicInfo(ws) {
   return { id: ws.id, name: ws.name, state: ws.state };
 }
 
+// Salas que sempre aparecem na lista, mesmo vazias.
+const DEFAULT_ROOMS = ['geral'];
+
+function roomsSummary() {
+  const names = new Set([...DEFAULT_ROOMS, ...rooms.keys()]);
+  return [...names]
+    .map((name) => ({
+      name,
+      users: rooms.has(name) ? [...rooms.get(name).clients.values()].map((c) => c.name) : [],
+    }))
+    .sort((a, b) => (DEFAULT_ROOMS.includes(b.name) - DEFAULT_ROOMS.includes(a.name)) || a.name.localeCompare(b.name));
+}
+
+// Avisa todos que estão em alguma sala (ou seja, já passaram pela senha).
+function broadcastRooms() {
+  const msg = { type: 'rooms', rooms: roomsSummary() };
+  for (const client of wss.clients) {
+    if (client.room) send(client, msg);
+  }
+}
+
 function join(ws, msg) {
-  if (ws.room) return;
   const name = cleanText(msg.name, 32);
   const roomName = cleanText(msg.room, 32).toLowerCase();
   if (!name || !roomName) {
@@ -57,6 +77,11 @@ function join(ws, msg) {
   }
   if (PASSWORD && msg.password !== PASSWORD) {
     return send(ws, { type: 'error', message: 'Senha do servidor incorreta.' });
+  }
+  // Já está numa sala: é uma troca de sala.
+  if (ws.room) {
+    if (ws.roomName === roomName) return;
+    leave(ws, { silent: true });
   }
 
   let room = rooms.get(roomName);
@@ -78,13 +103,16 @@ function join(ws, msg) {
     peers: [...room.clients.values()].map(publicInfo),
     history: room.history,
     iceServers: ICE_SERVERS,
+    rooms: roomsSummary(),
   });
   broadcast(room, { type: 'peer-joined', peer: publicInfo(ws) });
   room.clients.set(ws.id, ws);
   console.log(`[${roomName}] ${name} entrou (${room.clients.size} na sala)`);
+  broadcastRooms();
 }
 
-function leave(ws) {
+// silent: troca de sala, a lista de salas é atualizada logo depois, no join.
+function leave(ws, { silent = false } = {}) {
   const room = ws.room;
   if (!room) return;
   room.clients.delete(ws.id);
@@ -92,6 +120,7 @@ function leave(ws) {
   console.log(`[${ws.roomName}] ${ws.name} saiu (${room.clients.size} na sala)`);
   if (room.clients.size === 0) rooms.delete(ws.roomName);
   ws.room = null;
+  if (!silent) broadcastRooms();
 }
 
 wss.on('connection', (ws) => {
